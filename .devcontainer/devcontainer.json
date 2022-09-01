@@ -1,0 +1,24 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://containers.dev/implementors/json_reference/
+{
+  "name": "ocaml-dev-container",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "postCreateCommand": "bash ./scripts/setup.sh",
+  "forwardPorts": [9000],
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--security-opt",
+    "seccomp=unconfined"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": ["ocamllabs.ocaml-platform"]
+    }
+  },
+  "remoteUser": "opam",
+  "settings": {
+    "editor.formatOnSave": true
+  }
+}

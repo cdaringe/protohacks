@@ -1,0 +1,3 @@
+(library
+ (name echolib)
+ (libraries eio unix))

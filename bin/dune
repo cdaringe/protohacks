@@ -1,0 +1,4 @@
+(executable
+ (public_name echo)
+ (name echo)
+ (libraries eio eio_main echolib))
