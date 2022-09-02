@@ -2,8 +2,9 @@
 # FROM ocaml/opam:ubuntu-lts-ocaml-5.1
 FROM ocaml/opam:ubuntu-lts-ocaml-5.0
 USER root
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install --no-install-recommends pkg-config
+RUN apt-get purge libappstream3 || true \
+  && apt-get update && export DEBIAN_FRONTEND=noninteractive \
+  && apt-get -y install --no-install-recommends pkg-config
 USER opam
 RUN test -r /home/opam/.opam/opam-init/init.sh \
   && . /home/opam/.opam/opam-init/init.sh > /dev/null 2> /dev/null \
