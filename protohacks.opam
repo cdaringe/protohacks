@@ -13,8 +13,10 @@ depends: [
   "alcotest" {with-test}
   "dune" {>= "3.4" & > "3.4"}
   "ocaml-lsp-server"
+  "ocamlformat"
   "utop"
   "eio"
+  "eio_main"
   "odoc" {with-doc}
 ]
 build: [

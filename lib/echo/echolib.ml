@@ -8,6 +8,7 @@ let listen ~env =
   let socket = listen ~sw ~backlog:1000 net addr in
   let echo flow _ = Flow.copy flow flow in
   let on_error = traceln "Error handling connection: %a" Fmt.exn in
+  traceln "server started";
   while true do
     accept_fork socket ~sw echo ~on_error
   done

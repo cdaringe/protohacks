@@ -2,9 +2,7 @@
 // https://containers.dev/implementors/json_reference/
 {
   "name": "ocaml-dev-container",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
+  "image": "cdaringe/ocaml5-devcontainer",
   "postCreateCommand": "bash ./scripts/setup.sh",
   "forwardPorts": [9000],
   "runArgs": [

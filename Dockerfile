@@ -7,5 +7,13 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 USER opam
 RUN test -r /home/opam/.opam/opam-init/init.sh \
   && . /home/opam/.opam/opam-init/init.sh > /dev/null 2> /dev/null \
-  && eval $(opam env)
-
+  && eval $(opam env) \
+  && opam install dune
+WORKDIR /app
+COPY ./dune-project ./dune-project
+RUN opam exec dune build --best-effort \
+  && opam install . --deps-only --with-test --with-doc --jobs=1
+ENV DENO_INSTALL="/home/opam/.deno"
+ENV PATH="$DENO_INSTALL/bin:$PATH"
+ENV FOO=BAR
+RUN curl -fsSL https://raw.githubusercontent.com/cdaringe/rad/main/assets/install.sh | bash
