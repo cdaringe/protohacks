@@ -24,11 +24,14 @@
   (alcotest :with-test)
   (dune
    (> 3.4))
+  eio
+  eio_main
   ocaml-lsp-server
   ocamlformat
+  ppx_deriving
+  ppx_deriving_yojson
   utop
-  eio
-  eio_main)
+  yojson)
  (tags
   (topics "to describe" your project)))
 

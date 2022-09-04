@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  protohacks:
+    image: cdaringe/ocaml5-devcontainer
+    network_mode: host
+    command: ls -al && dune exec ./bin/servers.exe
+    # command: dune exec ./bin/servers.exe
+    ports:
+      - 10000:10000
+    volumes:
+      - ./:/app
+      # - ./_build:/app/_build
+      # - ./bin:/app/bin
+      # - ./lib:/app/lib
+      # - ./dune-project:/app/dune-project
+    # restart: unless-stopped

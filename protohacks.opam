@@ -12,11 +12,14 @@ bug-reports: "https://github.com/cdaringe/protohacks/issues"
 depends: [
   "alcotest" {with-test}
   "dune" {>= "3.4" & > "3.4"}
-  "ocaml-lsp-server"
-  "ocamlformat"
-  "utop"
   "eio"
   "eio_main"
+  "ocaml-lsp-server"
+  "ocamlformat"
+  "ppx_deriving"
+  "ppx_deriving_yojson"
+  "utop"
+  "yojson"
   "odoc" {with-doc}
 ]
 build: [
