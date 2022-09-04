@@ -3,5 +3,6 @@
   "editor.defaultFormatter": "ocamllabs.ocaml-platform",
   "[ocaml]": {
     "editor.defaultFormatter": "ocamllabs.ocaml-platform"
-  }
+  },
+  "terminal.integrated.defaultProfile.linux": "sh"
 }
