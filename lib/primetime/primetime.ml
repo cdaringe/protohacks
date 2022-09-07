@@ -24,9 +24,8 @@ let handle_stream flow _ =
     Req.parse line |> function
     | Ok req -> Prime.check_prime req.number |> Res.of_prime |> send
     | Error e ->
-        let msg = Printf.sprintf "failed parse: %s%!" line in
         send @@ Res.malformed (Printf.sprintf "%s" e);
-        raise @@ Failure msg
+        raise @@ Failure (Printf.sprintf "failed parse: %s%!" line)
   in
   Server.read_lines ~flow ~on_line
 
