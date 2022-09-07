@@ -1,6 +1,13 @@
 (library
  (name primetime)
- (libraries yojson ppx_deriving_yojson.runtime)
+ (libraries
+  server
+  cresult
+  prime
+  eio
+  yojson
+  ppx_deriving_yojson.runtime
+  stdint)
  (preprocess
   (pps
    ppx_deriving.show

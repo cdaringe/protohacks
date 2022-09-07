@@ -18,7 +18,10 @@ depends: [
   "ocamlformat"
   "ppx_deriving"
   "ppx_deriving_yojson"
+  "primes"
   "utop"
+  "stdint"
+  "zarith"
   "yojson"
   "odoc" {with-doc}
 ]
