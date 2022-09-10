@@ -2,8 +2,9 @@ module Errors = struct
   type t = InvalidPayload of string
 end
 
+(* Docket: track of prices in a home rolled binary tree with mutation and search *)
 module Docket = struct
-  open Int32
+  type t
 
   type 'v tree = Leaf | Node of 'v node [@@deriving show]
 
@@ -15,15 +16,13 @@ module Docket = struct
   }
   [@@deriving show]
 
-  type t
-
   let init key value = Node { key; value; left = ref Leaf; right = ref Leaf }
 
   let rec insert k v n =
     let child = if k < n.key then n.left else n.right in
     match !child with Leaf -> child := init k v | Node n' -> insert k v n'
 
-  let find_root_in_range min max n =
+  let find_in_range min max n =
     let in_range n = n.key >= min && n.key <= max in
     let rec find n =
       match n with
@@ -46,15 +45,6 @@ module Docket = struct
     | Node n' -> visit_in_range on_visit min max n'
     | _ -> ());
     ()
-
-  let sum = List.(fold_left add zero)
-
-  let mean t =
-    let open List in
-    let len = length t in
-    if len = 0 then Int32.zero else div (sum t) (of_int @@ len)
-
-  let rec values = function [] -> [] | x :: xs -> snd x :: values xs
 end
 
 module Req = struct
@@ -102,8 +92,6 @@ module Res = struct
 end
 
 let handle_stream flow _ =
-  let sf s = Printf.sprintf s in
-  let log s = Eio.traceln "%s" s in
   let data = ref Docket.Leaf in
   let reader = Eio.Buf_read.of_flow flow ~max_size:1_000_000 in
   try
@@ -125,17 +113,13 @@ let handle_stream flow _ =
                 ()
               in
               Docket.(
-                find_root_in_range min max t |> function
+                find_in_range min max t |> function
                 | Some n -> visit_in_range on_visit min max n
                 | None -> ());
               let mean =
-                let open Int64 in
-                if !count = 0 then zero else div !total (of_int !count)
+                Int64.(if !count = 0 then zero else div !total (of_int !count))
               in
               let b = Bytes.create 4 in
-              log
-              @@ sf "min,max,mean,count\n%i,%i,%s,%i" (Int32.to_int min)
-                   (Int32.to_int max) (Int64.to_string mean) !count;
               Bytes.set_int32_be b 0 (Int64.to_int32 mean);
               Server.send_bytes ~flow b;
               ())
