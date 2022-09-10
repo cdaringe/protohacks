@@ -1,3 +1,10 @@
+module type Int = sig
+  include Cnum.Num
+
+  val min_int : t
+  val max_int : t
+end
+
 let rec pow a = function
   | 0 -> 1
   | 1 -> a

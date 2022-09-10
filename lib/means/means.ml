@@ -1,20 +1,14 @@
-module Errors = struct
-  type t = InvalidPayload of string
-end
-
-(* Docket: track of prices in a home rolled binary tree with mutation and search *)
-module Docket = struct
+module Docket (Num : Cint.Int) = struct
   type t
 
-  type 'v tree = Leaf | Node of 'v node [@@deriving show]
+  type 'v tree = Leaf | Node of 'v node
 
   and 'v node = {
-    key : int32;
+    key : Num.t;
     value : 'v;
     left : 'v tree ref;
     right : 'v tree ref;
   }
-  [@@deriving show]
 
   let init key value = Node { key; value; left = ref Leaf; right = ref Leaf }
 
@@ -22,15 +16,13 @@ module Docket = struct
     let child = if k < n.key then n.left else n.right in
     match !child with Leaf -> child := init k v | Node n' -> insert k v n'
 
-  let find_in_range min max n =
+  let find ?(min = Num.min_int) ?(max = Num.max_int) n =
     let in_range n = n.key >= min && n.key <= max in
-    let rec find n =
-      match n with
+    let rec find = function
       | Leaf -> None
       | Node n ->
           if in_range n then Some n
           else
-            (* let _ = Eio.traceln "-> %i" (Int32.to_int n.key) in *)
             let child = if n.key < min then n.right else n.left in
             find !child
     in
@@ -51,79 +43,56 @@ module Req = struct
   type t =
     | Query of { min : int32; max : int32 }
     | Insert of { time : int32; price : int32 }
-  [@@deriving show, yojson { strict = false }]
-
-  let to_int s = s |> String.to_bytes |> fun b -> Bytes.get_int32_be b 4
 
   let bytes_to_int cl =
     cl |> List.map Char.chr |> List.to_seq |> Bytes.of_seq |> fun b ->
     Bytes.get_int32_be b 0
 
-  type int_list = int list [@@deriving show]
-
   let rec parse_int_bytes l b =
     if List.length l < 4 then
-      let c = Eio.Buf_read.any_char b in
-      let code = Char.code c in
+      let code = Char.code @@ Eio.Buf_read.any_char b in
       parse_int_bytes (code :: l) b
-    else l |> List.rev
+    else l |> List.rev |> bytes_to_int
 
-  let q_of_reader b =
-    let min = parse_int_bytes [] b and max = parse_int_bytes [] b in
-    Query { min = min |> bytes_to_int; max = max |> bytes_to_int }
-
-  let i_of_reader b =
-    let time = parse_int_bytes [] b in
-    let price = parse_int_bytes [] b in
-    Insert { time = bytes_to_int time; price = bytes_to_int price }
-
-  let of_reader buf_r =
-    let mode = Eio.Buf_read.any_char buf_r in
-    match mode with
-    | 'Q' -> q_of_reader buf_r |> Result.ok
-    | 'I' -> i_of_reader buf_r |> Result.ok
-    | c ->
-        Error (Errors.InvalidPayload (Printf.sprintf "'%c' invalid msg type" c))
-end
-
-module Res = struct
-  type t = { req_method : string; [@key "method"] prime : bool }
-  [@@deriving show, yojson { strict = false }]
+  let of_reader b =
+    let c = Eio.Buf_read.any_char b in
+    let a = parse_int_bytes [] b in
+    let b = parse_int_bytes [] b in
+    match c with
+    | 'Q' -> Query { min = a; max = b }
+    | 'I' -> Insert { time = a; price = b }
+    | c -> raise @@ Failure (Printf.sprintf "'%c' invalid msg type" c)
 end
 
 let handle_stream flow _ =
-  let data = ref Docket.Leaf in
+  let module Docket32 = Docket (Int32) in
+  let data = ref Docket32.Leaf in
   let reader = Eio.Buf_read.of_flow flow ~max_size:1_000_000 in
   try
     while true do
       match Req.of_reader reader with
-      | Ok (Req.Insert { time; price }) -> (
+      | Req.Insert { time; price } -> (
           match !data with
-          | Docket.Leaf -> data := Docket.init time price
-          | Docket.Node node -> Docket.insert time price node |> ignore)
-      | Ok (Req.Query { min; max }) -> (
+          | Docket32.Leaf -> data := Docket32.init time price
+          | Docket32.Node node -> Docket32.insert time price node |> ignore)
+      | Req.Query { min; max } -> (
           match !data with
-          | Docket.Leaf -> raise (Failure "no data")
-          | Docket.Node _ as t ->
-              let total = ref Int64.zero in
-              let count = ref 0 in
-              let on_visit Docket.{ value; _ } =
-                (total := Int64.(add !total (of_int32 value)));
-                incr count;
-                ()
+          | Docket32.Leaf -> raise (Failure "no data")
+          | Docket32.Node _ as t ->
+              let module IntMean = Cagg.Mean (Int64) in
+              let acc = ref @@ IntMean.init () in
+              let on_visit Docket32.{ value; _ } =
+                acc := IntMean.acc !acc (Int64.of_int32 value)
               in
-              Docket.(
-                find_in_range min max t |> function
+              Docket32.(
+                match find ~min ~max t with
                 | Some n -> visit_in_range on_visit min max n
                 | None -> ());
-              let mean =
-                Int64.(if !count = 0 then zero else div !total (of_int !count))
-              in
+              let mean = IntMean.agg !acc in
               let b = Bytes.create 4 in
               Bytes.set_int32_be b 0 (Int64.to_int32 mean);
               Server.send_bytes ~flow b;
               ())
-      | Error (Errors.InvalidPayload msg) -> Eio.traceln "Parse failed: %s" msg
     done
   with End_of_file -> ()
 
