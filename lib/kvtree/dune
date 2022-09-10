@@ -1,0 +1,3 @@
+(library
+ (libraries cint)
+ (name kvtree))

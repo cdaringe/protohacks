@@ -4,6 +4,7 @@
   cagg
   clist
   cint
+  kvtree
   server
   yojson
   ppx_deriving_yojson.runtime
