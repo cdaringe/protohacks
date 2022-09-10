@@ -32,28 +32,28 @@ end
 
 let handle_stream flow _ =
   let module Ledger = Kvtree.T (Int32) in
-  let data = ref Ledger.Leaf in
+  let open Ledger in
+  let data = ref Leaf in
   let reader = Eio.Buf_read.of_flow flow ~max_size:1_000_000 in
   try
     while true do
       match Req.of_reader reader with
       | Req.Insert { time; price } -> (
           match !data with
-          | Ledger.Leaf -> data := Ledger.init time price
-          | Ledger.Node node -> Ledger.insert time price node |> ignore)
+          | Leaf -> data := init time price
+          | Node node -> insert time price node)
       | Req.Query { min; max } -> (
           match !data with
-          | Ledger.Leaf -> raise @@ Failure "no data"
-          | Ledger.Node _ as t ->
+          | Leaf -> raise @@ Failure "no data"
+          | Node _ as t ->
               let module IntMean = Cagg.Mean (Int64) in
               let acc = ref @@ IntMean.init () in
-              let on_visit Ledger.{ value; _ } =
+              let on_visit { value; _ } =
                 acc := IntMean.acc !acc (Int64.of_int32 value)
               in
-              Ledger.(
-                match find_node ~min ~max t with
-                | Some n -> visit on_visit ~min ~max n
-                | None -> ());
+              (match find_node ~min ~max t with
+              | Some n -> visit on_visit ~min ~max n
+              | None -> ());
               Res.send flow @@ IntMean.agg !acc)
     done
   with End_of_file -> ()
