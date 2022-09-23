@@ -1,0 +1,3 @@
+(library
+ (name budgetchat)
+ (libraries cchar server))

@@ -39,13 +39,15 @@ let send_bytes ~flow ?(flush = true) bytes =
   in
   Write.with_flow flow write_flush
 
-let send_ndjson ~tojson ~flow t =
-  let ndjson = tojson t ^ "\n" in
+let send_line ~flow text =
+  let line = text ^ "\n" in
   let write_flush t =
     (* probably a frivolous flush, but protohackers seems to be less
        finicky with it? could be blind luck. *)
     Write.flush t;
-    Write.string t ndjson;
+    Write.string t line;
     Write.flush t
   in
   Write.with_flow flow write_flush
+
+let send_ndjson ~tojson ~flow t = tojson t |> send_line ~flow

@@ -1,14 +1,6 @@
 (library
  (name means)
- (libraries
-  cagg
-  clist
-  cint
-  kvtree
-  server
-  yojson
-  ppx_deriving_yojson.runtime
-  stdint)
+ (libraries cagg clist cint kvtree server yojson ppx_deriving_yojson.runtime)
  (preprocess
   (pps
    ppx_deriving.show
