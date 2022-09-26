@@ -2,3 +2,8 @@
  (public_name servers)
  (name servers)
  (libraries eio eio_main primetime means budgetchat))
+
+(rule
+ (alias run)
+ (action
+  (run ./servers.exe)))
