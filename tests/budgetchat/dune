@@ -1,0 +1,3 @@
+(executable
+ (libraries budgetchat eio eio.mock eio_main)
+ (name budgetchat_test))

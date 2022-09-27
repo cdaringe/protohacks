@@ -32,8 +32,6 @@
   ppx_deriving_yojson
   primes
   utop
-  stdint
-  zarith
   yojson)
  (tags
   (topics "to describe" your project)))

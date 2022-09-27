@@ -3,8 +3,8 @@
 - Each socket gets a handler, H
 - H may read freely from its socket
 - H may never write to its socket
-- H may request writes to its socket AND peer sockets
-- Each socket gets a socket writer, W
+- H may request writes to its own socket and peer sockets
+- Each socket gets paired with a socket writer, W
 - Each W maintains a queue of writes, Wi_q
 - Each H may add to _any_ Wi_q
 - Each W depletes its queue
@@ -26,8 +26,10 @@ module Handshake = struct
   type _ Effect.t += Identify : string Effect.t
 
   let verify_identity id =
-    if Cchar.is_alphanum_str id && String.length id > 0 then Ok (String.trim id)
-    else Error ("invalid name: '" ^ id ^ "'")
+    let is_alpha = Cchar.is_alphanum_str id in
+    let is_empty = String.length id = 0 in
+    if is_alpha && not is_empty then Ok id
+    else Error (Printf.sprintf "invalid name: '%s'" id)
 
   module Handlers = struct
     open Server
@@ -62,8 +64,6 @@ module Pool = struct
   module Handlers = struct
     open Server
 
-    let prefix name = "[" ^ name ^ "] "
-
     let run ~send ~pool ~flow (type a) (e : a Effect.t) =
       match e with
       | Announce name ->
@@ -72,11 +72,9 @@ module Pool = struct
               let peer_names = keys_without name !pool in
               let body = String.concat ", " peer_names in
               let current_peers_msg = "* The room contains: " ^ body in
-              log "\tcurrent_peers_msg: %s" current_peers_msg;
               send (create_msg name current_peers_msg);
               let enter_msg = "* " ^ name ^ " has entered the room" in
               let peer_msgs = create_peer_msgs ~peer_names enter_msg in
-              log "\tenter_msg: %s" enter_msg;
               List.iter send peer_msgs;
               continue k ())
       | Broadcast name ->
@@ -85,22 +83,18 @@ module Pool = struct
               let on_line msg =
                 let peer_names = keys_without name !pool in
                 List.iter send
-                  (create_peer_msgs ~peer_names (prefix name ^ msg))
+                  (create_peer_msgs ~peer_names ("[" ^ name ^ "] " ^ msg))
               in
-              log "waiting for great stuff";
               (try read_lines ~on_line ~flow
-               with exn ->
-                 log "[%s: halting broadcast] (%s)" name
-                   (Printexc.to_string exn));
+               with exn -> log "%s" (Printexc.to_string exn));
               continue k ())
       | Disconnect name ->
           Some
             (fun k ->
               pool := MapKStr.remove name !pool;
               let peer_names = keys_without name !pool in
-              List.iter send
-                (create_peer_msgs ~peer_names
-                   (prefix name ^ " has left the room"));
+              let body = "* " ^ name ^ " has left the room" in
+              List.iter send (create_peer_msgs ~peer_names body);
               continue k ())
       | Join name ->
           Some
@@ -111,73 +105,66 @@ module Pool = struct
   end
 end
 
-let handle_effects ~enqueue ~pool ~flow ~client f =
-  match_with f ()
+let chat id =
+  perform Handshake.Greet;
+  let name = String.trim @@ perform Handshake.Identify in
+  match Handshake.verify_identity name with
+  | Error msg -> log "%i invalid identity %s" id msg
+  | Ok name ->
+      let participate _ =
+        perform (Pool.Join name);
+        perform (Pool.Announce name);
+        perform (Pool.Broadcast name)
+      in
+      let finally _ = try perform (Pool.Disconnect name) with _ -> () in
+      Fun.protect ~finally participate
+
+let connection_count = ref 0
+
+let handle_socket ~enqueue ~pool flow addr =
+  incr connection_count;
+  let id = !connection_count in
+  match_with chat id
     {
-      retc =
-        (fun v ->
-          log "xxx finished connection";
-          v);
-      exnc = (fun e -> log "steam exiting: %a" Fmt.exn e);
+      retc = (Cfun.tap @@ fun _ -> log "%i terminated" id);
+      exnc = (fun e -> log "%i failed: %a" id Fmt.exn e);
       effc =
         (fun (type a) (e : a Effect.t) ->
           List.find_map
             (fun run -> run e)
             [
               Pool.Handlers.run ~send:enqueue ~pool ~flow;
-              Handshake.Handlers.run ~client;
+              Handshake.Handlers.run ~client:(flow, addr);
             ]);
     }
 
-let chat _ =
-  log "pregreet";
-  perform Handshake.Greet;
-  let name = perform Handshake.Identify in
-  match Handshake.verify_identity name with
-  | Error msg -> log "invalid identity %s" msg
-  | Ok name ->
-      let open Pool in
-      let participate _ =
-        perform (Join name);
-        perform (Announce name);
-        perform (Broadcast name)
-      in
-      let finally _ =
-        try
-          log "trying to leave pool";
-          perform (Disconnect name)
-        with _ -> ()
-      in
-      Fun.protect ~finally participate
+let create_msg_queue_env sw =
+  let pool = ref MapKStr.empty in
+  let q = Queue.create () in
+  let is_depleting = ref false in
+  let rec deplete_q _ =
+    is_depleting := true;
+    match Queue.take_opt q with
+    | Some (`Msg (name, msg)) ->
+        (match MapKStr.find_opt name !pool with
+        | Some flow -> (
+            try Server.send_line ~flow msg with _ -> log "bummer")
+        | _ -> ())
+        |> deplete_q
+    | _ ->
+        is_depleting := false;
+        ()
+  in
+  let enqueue k =
+    let _ = match k with `Msg (_name, _body) -> () | _ -> () in
+    Queue.push k q;
+    match !is_depleting with true -> () | false -> deplete_q ()
+  in
+  let swo = Some sw in
+  (pool, enqueue, swo)
 
 let listen ~env ~port =
   let open Eio in
   Switch.run (fun sw ->
-      let pool = ref MapKStr.empty in
-      let q = Queue.create () in
-      let depleting = ref false in
-      let rec deplete_q _ =
-        depleting := true;
-        match Queue.take_opt q with
-        | Some (`Msg (name, msg)) ->
-            (match MapKStr.find_opt name !pool with
-            | Some flow -> (
-                log "[q] (to %s) %s" name msg;
-                try Server.send_line ~flow msg with _ -> log "bummer")
-            | _ -> ())
-            |> deplete_q
-        | _ ->
-            depleting := false;
-            log "[q] empty";
-            ()
-      in
-      let enqueue k =
-        Queue.push k q;
-        match !depleting with true -> () | false -> deplete_q ()
-      in
-      let swo = Some sw in
-      Server.listen ~swo ~env ~port
-        ~fn:(fun flow addr ->
-          log "Wat";
-          handle_effects ~enqueue ~pool ~flow ~client:(flow, addr) chat)
-        ())
+      let pool, enqueue, swo = create_msg_queue_env sw in
+      Server.listen ~swo ~env ~port ~fn:(handle_socket ~enqueue ~pool) ())

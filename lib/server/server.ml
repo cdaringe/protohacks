@@ -23,9 +23,11 @@ let listen ?(swo = None) ~env ~port ~fn () =
 
 let read_lines_exn ~buf ~on_line =
   while Read.eof_seen buf = false do
-    on_line (Read.line buf)
+    on_line (Read.line buf);
+    Fiber.yield ()
   done;
-  traceln "lines all read"
+  ()
+(* traceln "lines all read" *)
 
 let read_bytes ~flow num_bytes =
   let r = Read.of_flow flow ~initial_size:num_bytes ~max_size:num_bytes in
@@ -54,9 +56,9 @@ let send_line ~flow text =
        finicky with it? could be blind luck. *)
     Write.string t line
   in
-  try
-    Write.with_flow flow write_flush;
-    Eio.traceln "(sent line: %s)" (String.trim line)
-  with _ -> Eio.traceln "dude it failed"
+  (* try *)
+  Write.with_flow flow write_flush
+(* Eio.traceln "(sent line: %s)" (String.trim line) *)
+(* with _ -> Eio.traceln "dude it failed" *)
 
 let send_ndjson ~tojson ~flow t = tojson t |> send_line ~flow

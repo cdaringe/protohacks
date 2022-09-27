@@ -1,0 +1,4 @@
+_build
+.devcontainer
+.git
+.vscode

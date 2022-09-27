@@ -4,14 +4,12 @@ FROM denoland/deno:alpine as deno
 FROM ocaml/opam:alpine-ocaml-5.0
 USER root
 RUN apk update
-RUN apk add pkgconfig linux-headers
-RUN apk add gmp gmp-dev
+RUN apk add pkgconfig linux-headers gmp gmp-dev curl
 USER opam
 RUN test -r /home/opam/.opam/opam-init/init.sh \
   && . /home/opam/.opam/opam-init/init.sh > /dev/null 2> /dev/null \
   && eval $(opam env) \
-  && opam install dune
-RUN opam pin stdint https://github.com/andrenth/ocaml-stdint.git#master
+  && opam update && opam install dune
 WORKDIR /app
 COPY ./dune-project ./dune-project
 RUN opam exec dune build --best-effort \
