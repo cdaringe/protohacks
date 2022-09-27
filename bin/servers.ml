@@ -4,10 +4,13 @@ let () = Printexc.record_backtrace true
 (* let _ = Eio_main.run @@ fun env -> Echolib.listen ~env ~port:10000 *)
 
 (* 1. primetime *)
-(* let _ = Eio_main.run @@ fun env -> Primetime.listen ~env ~port:10000 *)
+(* let _primetime _ = Eio_main.run @@ fun env -> Primetime.listen ~env ~port:10000 *)
 
 (* 2. means to an end *)
-(* let _ = Eio_main.run @@ fun env -> Means.listen ~env ~port:10000 *)
+(* let _means _ = Eio_main.run @@ fun env -> Means.listen ~env ~port:10000 *)
 
 (* 3. budget chat *)
-let _ = Eio_main.run @@ fun env -> Budgetchat.listen ~env ~port:9999
+let budget _ = Eio_main.run @@ fun env -> Budgetchat.listen ~env ~port:9999
+
+(* main *)
+let _ = budget ()
