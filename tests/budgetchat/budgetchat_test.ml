@@ -3,7 +3,7 @@ open Eio
 let run f = Eio_main.run (fun env -> Switch.run (fun sw -> f ~env ~sw))
 
 let main ~env ~sw =
-  let pool, enqueue, _swo = Budgetchat.create_msg_queue_env sw in
+  let pool, enqueue = Budgetchat.create_msg_queue_env () in
   let _net = Eio_mock.Net.make "mocknet" in
   let in_fiber socket =
     Fiber.fork ~sw (fun _ -> Budgetchat.handle_socket ~enqueue ~pool socket ())
@@ -27,7 +27,7 @@ let main ~env ~sw =
         (fun _ ->
           Promise.resolve resolver1 () |> fun _ ->
           let clock = Eio.Stdenv.clock env in
-          Eio.Time.sleep clock 1.0;
+          Eio.Time.sleep clock 0.1;
           "bob_outbound_2");
       `Yield_then (`Return "bob_outbound_3\n");
       `Yield_then (`Raise End_of_file);
@@ -37,23 +37,3 @@ let main ~env ~sw =
   ()
 
 let _ = run main
-
-(*
-Fiber.fork ~sw (fun _ ->
-      Fiber.yield ();
-      Fiber.yield ();
-      Fiber.yield ();
-      Fiber.yield ();
-      let q = Queue.create () in
-      let msgs = [ "test_user\n"; "guten\n"; "tag\n"; "amigos!\n" ] in
-      msgs |> List.to_seq |> Queue.add_seq q;
-      let rec process_cmd _ =
-        match Queue.take_opt q with
-        | Some cmd ->
-            Eio.Flow.copy_string cmd flow;
-            Fiber.yield ();
-            process_cmd ()
-        | None -> Eio.Flow.close flow
-      in
-      process_cmd ());
-*)

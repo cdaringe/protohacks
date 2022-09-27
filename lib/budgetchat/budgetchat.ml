@@ -4,16 +4,12 @@
 - H may read freely from its socket
 - H may never write to its socket
 - H may request writes to its own socket and peer sockets
-- Each socket gets paired with a socket writer, W
-- Each W maintains a queue of writes, Wi_q
-- Each H may add to _any_ Wi_q
-- Each W depletes its queue
-- H may purge its associated W_q
+- Each socket enqueues messages a socket writer, W
+- Each W attempts to deplete its queue on each message
 *)
 
 open Effect
 open Effect.Deep
-module MapKStr = Map.Make (String)
 
 let log = Eio.traceln
 let create_msg name body = `Msg (name, body)
@@ -34,8 +30,7 @@ module Handshake = struct
   module Handlers = struct
     open Server
 
-    let run ~client (type a) (e : a Effect.t) =
-      let flow, _ = client in
+    let run ~client:(flow, _) (type a) (e : a Effect.t) =
       match e with
       | Greet ->
           Some
@@ -48,14 +43,15 @@ module Handshake = struct
 end
 
 module Pool = struct
-  type t
+  include Map.Make (String)
+
   type _ Effect.t += Announce : string -> unit Effect.t
   type _ Effect.t += Broadcast : string -> unit Effect.t
-  type _ Effect.t += Join : string -> unit Effect.t
   type _ Effect.t += Disconnect : string -> unit Effect.t
+  type _ Effect.t += Join : string -> unit Effect.t
 
   let keys ?(filter = fun _ -> true) t =
-    MapKStr.fold
+    fold
       (fun k _v acc -> match filter k with true -> k :: acc | _ -> acc)
       t []
 
@@ -91,7 +87,7 @@ module Pool = struct
       | Disconnect name ->
           Some
             (fun k ->
-              pool := MapKStr.remove name !pool;
+              pool := remove name !pool;
               let peer_names = keys_without name !pool in
               let body = "* " ^ name ^ " has left the room" in
               List.iter send (create_peer_msgs ~peer_names body);
@@ -99,7 +95,7 @@ module Pool = struct
       | Join name ->
           Some
             (fun k ->
-              pool := MapKStr.add name flow !pool;
+              pool := add name flow !pool;
               continue k ())
       | _ -> None
   end
@@ -116,14 +112,13 @@ let chat id =
         perform (Pool.Announce name);
         perform (Pool.Broadcast name)
       in
-      let finally _ = try perform (Pool.Disconnect name) with _ -> () in
+      let finally _ = perform (Pool.Disconnect name) in
       Fun.protect ~finally participate
 
-let connection_count = ref 0
+let connection_count = Counter.init ()
 
 let handle_socket ~enqueue ~pool flow addr =
-  incr connection_count;
-  let id = !connection_count in
+  let id = Counter.incr connection_count in
   match_with chat id
     {
       retc = (Cfun.tap @@ fun _ -> log "%i terminated" id);
@@ -138,33 +133,33 @@ let handle_socket ~enqueue ~pool flow addr =
             ]);
     }
 
-let create_msg_queue_env sw =
-  let pool = ref MapKStr.empty in
+let create_msg_queue_env _ =
+  let pool = ref Pool.empty in
   let q = Queue.create () in
-  let is_depleting = ref false in
-  let rec deplete_q _ =
-    is_depleting := true;
+  let is_flushing = ref false in
+  let rec flush _ =
+    is_flushing := true;
     match Queue.take_opt q with
     | Some (`Msg (name, msg)) ->
-        (match MapKStr.find_opt name !pool with
+        (match Pool.find_opt name !pool with
         | Some flow -> (
             try Server.send_line ~flow msg with _ -> log "bummer")
         | _ -> ())
-        |> deplete_q
+        |> flush
     | _ ->
-        is_depleting := false;
+        is_flushing := false;
         ()
   in
   let enqueue k =
     let _ = match k with `Msg (_name, _body) -> () | _ -> () in
     Queue.push k q;
-    match !is_depleting with true -> () | false -> deplete_q ()
+    match !is_flushing with true -> () | false -> flush ()
   in
-  let swo = Some sw in
-  (pool, enqueue, swo)
+  (pool, enqueue)
 
 let listen ~env ~port =
   let open Eio in
   Switch.run (fun sw ->
-      let pool, enqueue, swo = create_msg_queue_env sw in
+      let pool, enqueue = create_msg_queue_env () in
+      let swo = Some sw in
       Server.listen ~swo ~env ~port ~fn:(handle_socket ~enqueue ~pool) ())
