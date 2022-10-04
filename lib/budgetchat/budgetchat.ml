@@ -151,7 +151,6 @@ let create_msg_queue_env _ =
         ()
   in
   let enqueue k =
-    let _ = match k with `Msg (_name, _body) -> () | _ -> () in
     Queue.push k q;
     match !is_flushing with true -> () | false -> flush ()
   in
