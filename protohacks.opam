@@ -12,6 +12,7 @@ doc: "https://github.com/cdaringe/protohacks"
 bug-reports: "https://github.com/cdaringe/protohacks/issues"
 depends: [
   "alcotest" {with-test}
+  "ocaml-variants" {= "5.0.0+trunk"}
   "dune" {>= "3.4" & > "3.4"}
   "eio"
   "eio_main"
