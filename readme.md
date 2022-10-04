@@ -1,6 +1,6 @@
 # protohacks
 
-[protohackers]() using OCaml v5.x
+[protohackers](https://protohackers.com/) using OCaml v5.x
 
 [![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https://ci.ocamllabs.io/badge/cdaringe/protohacks/main&logo=ocaml)](https://ci.ocamllabs.io/github/cdaringe/protohacks)
 

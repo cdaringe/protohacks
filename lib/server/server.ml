@@ -27,11 +27,9 @@ let read_lines_exn ~buf ~on_line =
     Fiber.yield ()
   done;
   ()
-(* traceln "lines all read" *)
 
 let read_bytes ~flow num_bytes =
-  let r = Read.of_flow flow ~initial_size:num_bytes ~max_size:num_bytes in
-  r
+  Read.of_flow flow ~initial_size:num_bytes ~max_size:num_bytes
 
 let read_line_term_char ?(term = '\n') flow =
   let buf = Read.of_flow flow ~initial_size:100 ~max_size:1_000_000 in
@@ -51,14 +49,8 @@ let send_bytes ~flow ?(flush = true) bytes =
 
 let send_line ~flow text =
   let line = text ^ "\n" in
-  let write_flush t =
-    (* probably a frivolous flush, but protohackers seems to be less
-       finicky with it? could be blind luck. *)
-    Write.string t line
-  in
-  (* try *)
+  let write_flush t = Write.string t line in
   Write.with_flow flow write_flush
 (* Eio.traceln "(sent line: %s)" (String.trim line) *)
-(* with _ -> Eio.traceln "dude it failed" *)
 
 let send_ndjson ~tojson ~flow t = tojson t |> send_line ~flow

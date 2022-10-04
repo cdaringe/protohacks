@@ -4,8 +4,7 @@
 - H may read freely from its socket
 - H may never write to its socket
 - H may request writes to its own socket and peer sockets
-- Each socket enqueues messages a socket writer, W
-- Each W attempts to deplete its queue on each message
+- A single write, W, writes to all sockets concurrently, but in order
 *)
 
 open Effect
