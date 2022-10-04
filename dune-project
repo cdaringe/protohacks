@@ -18,8 +18,9 @@
 (package
  (name protohacks)
  (allow_empty)
- (synopsis "A short synopsis")
- (description "A longer description")
+ (synopsis "protohackers in OCaml")
+ (description
+  "TCP protocol implementations using OCaml 5.x with effects + eio")
  (depends
   (alcotest :with-test)
   (dune
@@ -34,6 +35,6 @@
   utop
   yojson)
  (tags
-  (topics "to describe" your project)))
+  (topics eio effects tcp protocol streams)))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project
