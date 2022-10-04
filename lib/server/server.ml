@@ -22,7 +22,7 @@ let listen ?(swo = None) ~env ~port ~fn () =
   | Some sw -> listen_ ~sw ~env ~port ~fn
 
 let read_lines_exn ~buf ~on_line =
-  while Read.eof_seen buf = false do
+  while Read.at_end_of_input buf = false do
     on_line (Read.line buf);
     Fiber.yield ()
   done;
