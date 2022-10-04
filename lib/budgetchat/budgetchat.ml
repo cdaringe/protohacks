@@ -1,10 +1,9 @@
-(*
-# Solution
-- Each socket gets a handler, H
-- H may read freely from its socket
-- H may never write to its socket
-- H may request writes to its own socket and peer sockets
-- A single write, W, writes to all sockets concurrently, but in order
+(* # Solution
+   - Each socket gets a handler, H
+   - H may read freely from its socket
+   - H may never write to its socket
+   - H may request writes to its own socket and peer sockets
+   - A single writer writes to all sockets concurrently, in order
 *)
 
 open Effect
