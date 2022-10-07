@@ -34,10 +34,8 @@ let listen_udp_ ~sw ~env ~port ~fn =
     let buf = Cstruct.create 1000 in
     try
       let client_addr, r = recv socket buf in
-      traceln "ack";
-      let raw_msg = Cstruct.(to_string (sub buf 0 r)) in
-      let msg = raw_msg |> String.trim in
-      let len = raw_msg |> String.length in
+      let msg = Cstruct.(to_string (sub buf 0 r)) in
+      let len = msg |> String.length in
       if len < 1000 then fn ~msg ~addr:client_addr ~reply:(reply client_addr)
       else failwith (Printf.sprintf "msg too long %i" len)
     with e -> on_error e

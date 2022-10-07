@@ -12,7 +12,7 @@ let () = Printexc.record_backtrace true
 (* 3. budget chat *)
 (* let budget _ = Eio_main.run @@ fun env -> Budgetchat.listen ~env ~port:9999 *)
 
-(* 3. budget chat *)
+(* 4. unusual db *)
 let main _ = Eio_main.run @@ fun env -> Unusual_db.listen ~env ~port:8888 ()
 
 (* main *)
