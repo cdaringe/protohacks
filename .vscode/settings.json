@@ -4,5 +4,8 @@
   "[ocaml]": {
     "editor.defaultFormatter": "ocamllabs.ocaml-platform"
   },
-  "terminal.integrated.defaultProfile.linux": "sh"
+  "terminal.integrated.defaultProfile.linux": "sh",
+  "[dockerfile]": {
+    "editor.defaultFormatter": "ms-azuretools.vscode-docker"
+  }
 }
