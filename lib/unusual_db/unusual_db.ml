@@ -21,10 +21,6 @@ let listen ~env ~port =
   let insert key value = dict := StrMap.add key value !dict in
   let get = function
     | "version" -> version
-    | k -> (
-        try StrMap.find k !dict
-        with _ ->
-          Eio.traceln "%s not found" k;
-          "")
+    | k -> ( try StrMap.find k !dict with _ -> "")
   in
   Server.listen_udp ~env ~port ~fn:(handle_msg ~dict:(insert, get))
