@@ -1,6 +1,6 @@
 module StrMap = Map.Make (String)
 
-let handle_msg ~dict:(insert, get) ~msg ~addr:_ ~reply =
+let handle_msg ~db:(insert, get) ~msg ~addr:_ ~reply =
   let partition_msg (key_rev, value_rev, is_insert_msg) c =
     let open List in
     match (c = '=', is_insert_msg) with
@@ -17,10 +17,10 @@ let handle_msg ~dict:(insert, get) ~msg ~addr:_ ~reply =
 
 let listen ~env ~port =
   let version = "caml_unusual_db" in
-  let dict = ref StrMap.(empty) in
-  let insert key value = dict := StrMap.add key value !dict in
+  let db = ref StrMap.(empty) in
+  let insert key value = db := StrMap.add key value !db in
   let get = function
     | "version" -> version
-    | k -> ( try StrMap.find k !dict with _ -> "")
+    | k -> ( try StrMap.find k !db with _ -> "")
   in
-  Server.listen_udp ~env ~port ~fn:(handle_msg ~dict:(insert, get))
+  Server.listen_udp ~env ~port ~fn:(handle_msg ~db:(insert, get))
