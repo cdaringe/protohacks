@@ -1,0 +1,3 @@
+(executable
+ (libraries mob eio eio.mock eio_main alcotest)
+ (name mob_test))

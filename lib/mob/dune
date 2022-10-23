@@ -1,0 +1,3 @@
+(library
+ (name mob)
+ (libraries clist eio server))

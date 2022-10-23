@@ -6,7 +6,7 @@ module Write = Eio.Buf_write
 let listen_ ~sw ~env ~port ~fn =
   let net = Eio.Stdenv.net env in
   let addr = `Tcp (Ipaddr.V4.any, port) in
-  let socket = listen ~sw ~backlog:1000 net addr in
+  let socket = listen ~reuse_addr:true ~backlog:10 ~sw net addr in
   let on_error e =
     let msg = Printexc.to_string e and stack = Printexc.get_backtrace () in
     traceln "error handling connection: %s%s" msg stack
@@ -45,12 +45,18 @@ let listen_udp ?(swo = None) ~env ~port ~fn () =
   let go ~sw = listen_udp_ ~sw ~env ~port ~fn in
   match swo with None -> Switch.run @@ fun sw -> go ~sw | Some sw -> go ~sw
 
+let nl = '\n'
+
+let read_line buf =
+  let line = Read.take_while (fun c -> c != nl) buf in
+  Buf_read.char nl buf |> ignore;
+  line
+
 let read_lines_exn ~buf ~on_line =
-  while Read.at_end_of_input buf = false do
-    on_line (Read.line buf);
+  while true do
+    on_line @@ read_line buf;
     Fiber.yield ()
-  done;
-  ()
+  done
 
 let read_bytes ~flow num_bytes =
   Read.of_flow flow ~initial_size:num_bytes ~max_size:num_bytes
