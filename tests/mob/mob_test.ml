@@ -1,4 +1,4 @@
-let t = Mob.Tony.swap_tony
+let t = Mob.Boguscoin.swap_coin
 
 (* let test_lowercase () =
    Alcotest.(check string)

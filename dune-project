@@ -22,10 +22,7 @@
  (description
   "TCP protocol implementations using OCaml 5.x with effects + eio")
  (depends
-  angstrom
   (alcotest :with-test)
-  ; (ocaml-variants
-  ;  (= "5.0.0+trunk"))
   (dune
    (> 3.4))
   eio
@@ -34,7 +31,6 @@
   ocamlformat
   ppx_deriving
   ppx_deriving_yojson
-  primes
   utop
   yojson)
  (tags
