@@ -10,3 +10,7 @@ let drop i l =
     else match l' with _ :: xs -> inner (rem - 1) xs | x -> x
   in
   inner i l
+
+let sort_by_fst l =
+  let compare_fn a b = compare (fst a) (fst b) in
+  List.sort compare_fn l

@@ -7,5 +7,9 @@
   "terminal.integrated.defaultProfile.linux": "sh",
   "[dockerfile]": {
     "editor.defaultFormatter": "ms-azuretools.vscode-docker"
+  },
+  "ocaml.sandbox": {
+    "kind": "opam",
+    "switch": "5.0"
   }
 }

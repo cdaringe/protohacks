@@ -25,6 +25,7 @@
   (alcotest :with-test)
   (dune
    (> 3.4))
+  containers
   eio
   eio_main
   ocaml-lsp-server

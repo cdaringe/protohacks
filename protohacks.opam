@@ -13,6 +13,7 @@ bug-reports: "https://github.com/cdaringe/protohacks/issues"
 depends: [
   "alcotest" {with-test}
   "dune" {>= "3.4" & > "3.4"}
+  "containers"
   "eio"
   "eio_main"
   "ocaml-lsp-server"

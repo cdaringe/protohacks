@@ -12,7 +12,7 @@
   ],
   "customizations": {
     "vscode": {
-      "extensions": ["ocamllabs.ocaml-platform"]
+      "extensions": ["ocamllabs.ocaml-platform", "hackwaly.ocamlearlybird"]
     }
   },
   "userEnvProbe": "none",

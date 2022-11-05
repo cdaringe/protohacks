@@ -1,0 +1,3 @@
+(executable
+ (libraries speed eio eio.mock eio_main alcotest)
+ (name speed_test))
