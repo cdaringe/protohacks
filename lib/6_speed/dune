@@ -2,4 +2,4 @@
  (name speed)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq))
- (libraries cfun clist copt cnum eio server ppx_deriving))
+ (libraries cref cfun clist copt cnum eio server ppx_deriving))

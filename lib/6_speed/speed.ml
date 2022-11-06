@@ -32,6 +32,8 @@ type ticket = {
 type _ Effect.t += AttemptTicketing : ticket_check -> unit Effect.t
 type _ Effect.t += IssueTicket : ticket -> unit Effect.t
 
+let handle_eff f t = Some (fun (k : _ continuation) -> continue k (f t))
+
 module Vehicle = struct
   type t = {
     plate : string;
@@ -239,7 +241,6 @@ module Roads = struct
 
   let add_plate (plate : plate) camera_id =
     let vehicle = get_or_init_vehicle plate in
-    (* traceln "getting camera ::%i" camera_id; *)
     let camera = get_camera_exn camera_id in
     Vehicle.add_observation ~timestamp:plate.timestamp ~camera vehicle;
     perform (AttemptTicketing (plate, camera))
@@ -250,23 +251,15 @@ module Roads = struct
     | true -> failwith "client already present"
 
   let add_camera (c : camera) id =
-    (* traceln "adding camera ::%i" id; *)
     add_road_client (Cam c) id;
     let cameras = try Hashtbl.find cameras_by_road_id c.road with _ -> [] in
     (* add, and sort cameras by position *)
     let next_cameras = (c.mile, c) :: cameras |> Clist.sort_by_fst in
-    traceln "%s" (show_camera_markers next_cameras);
     Hashtbl.replace cameras_by_road_id c.road next_cameras
 
   let add_dispatcher (d : dispatcher) flow id =
     add_road_client (Dis d) id;
-    let fn road_id =
-      (* let existing =
-           try Hashtbl.find dispatchers_by_road_id road_id with _ -> IntMap.empty
-         in
-         let next = IntMap.add id flow existing in *)
-      Hashtbl.replace dispatchers_by_road_id road_id flow
-    in
+    let fn road_id = Hashtbl.replace dispatchers_by_road_id road_id flow in
     List.iter fn d.roads
 
   let attempt_ticket ((plate', camera) : ticket_check) =
@@ -286,8 +279,6 @@ module Roads = struct
         else false
       in
       let is_already_ticketed = ticketed_between day1 day2 in
-      traceln "%s ticketed on (%i - %i): %b" v.plate day1 day2
-        is_already_ticketed;
       if is_already_ticketed then ()
       else
         let rec mark_between current target =
@@ -295,8 +286,6 @@ module Roads = struct
           if current < target then mark_between (current + 1) target else ()
         in
         mark_between day1 day2;
-        (* traceln "issue ticket to %s on road %i" plate road; *)
-        (* let int_speed = int_of_float @@ (speed *. 100.) in *)
         let t =
           {
             plate;
@@ -316,23 +305,21 @@ module Roads = struct
     List.iter on_violation violations
 end
 
-let install_heartbeat ~hb ~sw ~env ~send socklog msg =
-  match !hb with
-  | Some _ -> failwith "hb already exists"
-  | None ->
-      let interval = Float.of_int msg.interval /. 10. in
-      if interval <= 0. then ()
-      else
-        hb :=
-          Some
-            (Fiber.fork_daemon ~sw (fun _ ->
-                 let clock = Eio.Stdenv.clock env in
-                 while true do
-                   socklog "heartbeat";
-                   send Msg.Heartbeat;
-                   Time.sleep clock interval
-                 done;
-                 `Stop_daemon))
+let install_heartbeat ~hb ~sw ~env ~send msg =
+  let set _ =
+    let interval = Float.of_int msg.interval /. 10. in
+    if interval <= 0. then None
+    else
+      Some
+        (Fiber.fork_daemon ~sw (fun _ ->
+             let clock = Eio.Stdenv.clock env in
+             while true do
+               send Msg.Heartbeat;
+               Time.sleep clock interval
+             done;
+             `Stop_daemon))
+  in
+  Cref.singleton ~conflict_msg:"heartbeat already exists" ~set hb
 
 let socket_id = ref 0
 
@@ -349,21 +336,17 @@ let rec with_effects ?(root = false) ~env ~send fn =
             with_effects ~env ~send (fun _ -> Roads.attempt_ticket t);
             continue k ())
     | IssueTicket t ->
-        Some
-          (fun (k : (a, _) continuation) ->
-            let wait _ =
-              traceln "waiting for dispatcher";
-              let clock = Eio.Stdenv.clock env in
-              Time.sleep clock 0.5
-            in
-            let dispatch_flow = Roads.get_dispatcher ~wait ~tries:10 t.road in
-            Msg.Server.send ~flow:dispatch_flow (Msg.Ticket t);
-            continue k ())
+        let issue_ticket t =
+          let wait _ = Time.sleep (Eio.Stdenv.clock env) 0.5 in
+          let dispatch_flow = Roads.get_dispatcher ~wait ~tries:10 t.road in
+          Msg.Server.send ~flow:dispatch_flow (Msg.Ticket t)
+        in
+        handle_eff issue_ticket t
     | _ -> None
   in
   match_with fn ()
     {
-      retc = (Cfun.tap @@ fun _ -> () (* traceln "retc" *));
+      retc = ignore;
       exnc =
         (fun e ->
           traceln "exnc: %a" Fmt.exn e;
@@ -375,35 +358,23 @@ let rec with_effects ?(root = false) ~env ~send fn =
 
 let handle_socket ~sw ~env flow _ =
   let id = get_id () in
-  let socklog m = traceln "[%i] %s" id m in
   let open Msg.Server in
   let read = Eio.Buf_read.of_flow flow ~initial_size:100 ~max_size:1_000_000 in
   let send = Msg.Server.send ~flow in
   let hb = ref None in
-  let i = ref 0 in
   let rec process_msgs _ =
-    incr i;
     try
       let msg = parse read in
-      socklog @@ Fmt.str "{%i} %s" !i (Msg.show_client_msg msg);
       (match msg with
       | IAmCamera t -> Roads.add_camera t id
       | IAmDispatcher t -> Roads.add_dispatcher t flow id
       | Plate t -> Roads.add_plate t id
-      | WantHeartbeat t -> install_heartbeat ~hb ~sw ~env ~send socklog t);
+      | WantHeartbeat t -> install_heartbeat ~hb ~sw ~env ~send t);
       process_msgs ()
     with End_of_file -> ()
   in
   with_effects ~env ~send ~root:true process_msgs
-(* socklog "pending heartbeat"; *)
-(* Promise.await_exn (Option.get !hb); *)
-(* try Promise.await_exn (Option.get !hb) *)
-(* with e -> *)
-(* socklog @@ Fmt.str "%a" Fmt.exn_backtrace (e, Printexc.get_raw_backtrace ()); *)
-(* socklog "socket closing" *)
 
 let listen ~env ~port =
-  let handle_socket_in_isolated_switch a b =
-    Switch.run (fun sw -> handle_socket ~sw ~env a b)
-  in
-  Server.listen ~env ~port ~fn:handle_socket_in_isolated_switch ()
+  let fn a b = Switch.run (fun sw -> handle_socket ~sw ~env a b) in
+  Server.listen ~env ~port ~fn ()

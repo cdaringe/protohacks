@@ -14,17 +14,17 @@ let listen_ ~sw ~env ~port ~fn =
   let on_error e =
     traceln "[cserver] error handling connection: %s" (Cerr.exn_string e)
   in
-  let safe_fn a b =
+  let handle_connection a b =
     try fn a b
     with e -> (
       traceln "[cserver] socket handler raised with: %s\nattempting shutdown"
         (exn_string e);
       try Flow.shutdown a `All
-      with e -> traceln "[cserver] shutdown attempted: %s" (exn_string e))
+      with e -> traceln "[cserver] shutdown failed: %s" (exn_string e))
   in
   traceln "server listening on %i" port;
   while true do
-    accept_fork socket ~sw ~on_error safe_fn
+    accept_fork socket ~sw ~on_error handle_connection
   done
 
 let listen ?(swo = None) ~env ~port ~fn () =
