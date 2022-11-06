@@ -12,7 +12,7 @@ let listen_ ~sw ~env ~port ~fn =
   let addr = `Tcp (Ipaddr.V4.any, port) in
   let socket = listen ~reuse_addr:true ~backlog:10 ~sw net addr in
   let on_error e =
-    traceln "[cserver] error handling connection: %s" (exn_string e)
+    traceln "[cserver] error handling connection: %s" (Cerr.exn_string e)
   in
   let safe_fn a b =
     try fn a b
