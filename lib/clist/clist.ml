@@ -11,6 +11,9 @@ let drop i l =
   in
   inner i l
 
-let sort_by_fst l =
-  let compare_fn a b = compare (fst a) (fst b) in
+let sort_by_f f l =
+  let compare_fn a b = compare (f a) (f b) in
   List.sort compare_fn l
+
+let sort_by_fst l = sort_by_f fst l
+let sort_by_snd l = sort_by_f snd l

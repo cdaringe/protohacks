@@ -3,17 +3,28 @@ open Eio.Net
 module Read = Eio.Buf_read
 module Write = Eio.Buf_write
 
+let exn_string e =
+  let msg = Printexc.to_string e and stack = Printexc.get_backtrace () in
+  Fmt.str "%s%s" msg stack
+
 let listen_ ~sw ~env ~port ~fn =
   let net = Eio.Stdenv.net env in
   let addr = `Tcp (Ipaddr.V4.any, port) in
   let socket = listen ~reuse_addr:true ~backlog:10 ~sw net addr in
   let on_error e =
-    let msg = Printexc.to_string e and stack = Printexc.get_backtrace () in
-    traceln "error handling connection: %s%s" msg stack
+    traceln "[cserver] error handling connection: %s" (exn_string e)
+  in
+  let safe_fn a b =
+    try fn a b
+    with e -> (
+      traceln "[cserver] socket handler raised with: %s\nattempting shutdown"
+        (exn_string e);
+      try Flow.shutdown a `All
+      with e -> traceln "[cserver] shutdown attempted: %s" (exn_string e))
   in
   traceln "server listening on %i" port;
   while true do
-    accept_fork socket ~sw ~on_error fn
+    accept_fork socket ~sw ~on_error safe_fn
   done
 
 let listen ?(swo = None) ~env ~port ~fn () =

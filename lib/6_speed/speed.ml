@@ -51,7 +51,7 @@ module Vehicle = struct
       Hashtbl.find_opt vehicle.pings_by_road camera.road
       |> Copt.get_or_default []
     in
-    let next_pings = (camera.mile, timestamp) :: pings |> Clist.sort_by_fst in
+    let next_pings = (camera.mile, timestamp) :: pings |> Clist.sort_by_snd in
     traceln "pings (road %i) (plate: %s): %s" camera.road vehicle.plate
       (show_pings next_pings);
     Hashtbl.replace vehicle.pings_by_road camera.road next_pings
@@ -59,34 +59,47 @@ module Vehicle = struct
   let has_ticket_on t day = Hashtbl.mem t.tickets_by_day day
   let mark_ticket_on t day = Hashtbl.replace t.tickets_by_day day true
 
-  let find_violation ~road ~limit t =
-    let pings = Hashtbl.find t.pings_by_road road in
-    let f = float_of_int in
+  let find_violation ~pings ~limit =
     let check_violation (b_mile, b_ts) (a_mile, a_ts) =
-      let seconds = f (b_ts - a_ts) in
-      let miles = f (b_mile - a_mile) in
-      let hrs = seconds /. 3600.0 in
-      traceln "(distance: %f, duration: %f [%f])" miles seconds hrs;
+      let seconds = b_ts - a_ts in
+      let miles = b_mile - a_mile in
+      (* traceln "(distance: %f, duration: %f [%f])" miles seconds hrs; *)
       match (miles, seconds) with
-      | 0., _ -> None
-      | _, 0. -> failwith "invalid duration"
+      | 0, _ -> None
+      | _, 0 -> failwith "invalid duration"
       | _ -> (
-          let speed = miles /. hrs in
-          traceln "%f > %i ?" speed limit;
-          match speed > float_of_int limit with true -> Some speed | _ -> None)
+          (* miles / (seconds / s_per_h) ==> a / (x/y) ==> xb / y *)
+          (* let speed_100x_m_p_h = (100 * miles) / (seconds / 3600) in *)
+          let speed_100x_m_p_h = 100 * miles * 3600 / seconds in
+          let limit_100x_m_p_h = 100 * limit in
+          let abs_speed_100x = Cnum.abs_i speed_100x_m_p_h in
+          match abs_speed_100x > limit_100x_m_p_h with
+          | true -> Some (speed_100x_m_p_h, abs_speed_100x)
+          | _ -> None)
     in
-    let rec find_violation' l =
+    let rec emit_violations l =
       match l with
-      | [] | [ _ ] -> None
+      | [] | [ _ ] -> []
       | a :: tail -> (
           try
             let b = List.hd tail in
-            match check_violation b a with
-            | Some speed -> Some (a, b, speed)
-            | None -> find_violation' tail
-          with _ -> None)
+            let next =
+              match check_violation b a with
+              | Some (speed, abs_speed) -> (
+                  let m1, _t1 = a in
+                  let m2, _t2 = b in
+                  match (m1 < m2, speed > 0) with
+                  (* (m1 -> m2) *)
+                  | true, true (* (m2 <- m1) *) | false, false ->
+                      (a, b, abs_speed) :: emit_violations tail
+                  | true, false | false, true ->
+                      (b, a, abs_speed) :: emit_violations tail)
+              | None -> emit_violations tail
+            in
+            next
+          with _ -> [])
     in
-    find_violation' pings
+    emit_violations pings
 end
 
 module Msg = struct
@@ -201,6 +214,15 @@ module Roads = struct
   let cameras_by_road_id = Hashtbl.create 10
   let dispatchers_by_road_id = Hashtbl.create 10
   let vehicles_by_plate = Hashtbl.create 10
+  let get_dispatcher_opt road = Hashtbl.find_opt dispatchers_by_road_id road
+
+  let rec get_dispatcher ~wait ~tries road =
+    match (get_dispatcher_opt road, tries) with
+    | None, 0 -> failwith "could not find dispatcher"
+    | None, _ ->
+        wait ();
+        get_dispatcher ~wait ~tries:(tries - 1) road
+    | Some d, _ -> d
 
   let get_camera_exn id =
     match Hashtbl.find_opt monitors_by_id id with
@@ -217,7 +239,7 @@ module Roads = struct
 
   let add_plate (plate : plate) camera_id =
     let vehicle = get_or_init_vehicle plate in
-    traceln "getting camera ::%i" camera_id;
+    (* traceln "getting camera ::%i" camera_id; *)
     let camera = get_camera_exn camera_id in
     Vehicle.add_observation ~timestamp:plate.timestamp ~camera vehicle;
     perform (AttemptTicketing (plate, camera))
@@ -228,7 +250,7 @@ module Roads = struct
     | true -> failwith "client already present"
 
   let add_camera (c : camera) id =
-    traceln "adding camera ::%i" id;
+    (* traceln "adding camera ::%i" id; *)
     add_road_client (Cam c) id;
     let cameras = try Hashtbl.find cameras_by_road_id c.road with _ -> [] in
     (* add, and sort cameras by position *)
@@ -248,23 +270,33 @@ module Roads = struct
     List.iter fn d.roads
 
   let attempt_ticket ((plate', camera) : ticket_check) =
-    traceln "attempt ticket?";
     let { road; limit; _ } = camera in
-    let { plate; timestamp } = plate' in
+    let plate = plate'.plate in
     let v =
       Hashtbl.find_opt vehicles_by_plate plate |> function
       | Some v -> v
       | None -> failwith ("could not find vehicle " ^ plate)
     in
-    let day = day_index timestamp in
-    if Vehicle.has_ticket_on v day then traceln "ticket already issue"
-    else traceln "finding violations,,,";
-    match Vehicle.find_violation ~road ~limit v with
-    | None -> ()
-    | Some ((mile1, timestamp1), (mile2, timestamp2), speed) ->
-        Vehicle.mark_ticket_on v day;
-        traceln "issue ticket to %s on road %i" plate road;
-        let int_speed = int_of_float @@ (speed *. 100.) in
+    let on_violation ((mile1, timestamp1), (mile2, timestamp2), speed) =
+      let day1 = day_index timestamp1 in
+      let day2 = day_index timestamp2 in
+      let rec ticketed_between current target =
+        if Vehicle.has_ticket_on v current then true
+        else if current < target then ticketed_between (current + 1) target
+        else false
+      in
+      let is_already_ticketed = ticketed_between day1 day2 in
+      traceln "%s ticketed on (%i - %i): %b" v.plate day1 day2
+        is_already_ticketed;
+      if is_already_ticketed then ()
+      else
+        let rec mark_between current target =
+          Vehicle.mark_ticket_on v current;
+          if current < target then mark_between (current + 1) target else ()
+        in
+        mark_between day1 day2;
+        (* traceln "issue ticket to %s on road %i" plate road; *)
+        (* let int_speed = int_of_float @@ (speed *. 100.) in *)
         let t =
           {
             plate;
@@ -273,14 +305,18 @@ module Roads = struct
             timestamp1;
             mile2;
             timestamp2;
-            speed = int_speed;
+            speed;
           }
         in
-        traceln "%s" (show_ticket t);
+        traceln "Sending ticket: %s" (show_ticket t);
         perform (IssueTicket t)
+    in
+    let pings = Hashtbl.find v.pings_by_road road in
+    let violations = Vehicle.find_violation ~pings ~limit in
+    List.iter on_violation violations
 end
 
-let install_heartbeat ~hb ~sw ~env ~send msg =
+let install_heartbeat ~hb ~sw ~env ~send socklog msg =
   match !hb with
   | Some _ -> failwith "hb already exists"
   | None ->
@@ -289,12 +325,14 @@ let install_heartbeat ~hb ~sw ~env ~send msg =
       else
         hb :=
           Some
-            (Fiber.fork_promise ~sw (fun _ ->
+            (Fiber.fork_daemon ~sw (fun _ ->
                  let clock = Eio.Stdenv.clock env in
                  while true do
+                   socklog "heartbeat";
                    send Msg.Heartbeat;
                    Time.sleep clock interval
-                 done))
+                 done;
+                 `Stop_daemon))
 
 let socket_id = ref 0
 
@@ -302,34 +340,30 @@ let get_id _ =
   incr socket_id;
   !socket_id
 
-let rec with_effects ?(root = false) ~send fn =
-  traceln "with_effects enter";
+let rec with_effects ?(root = false) ~env ~send fn =
   let effc (type a) (e : a Effect.t) =
     match e with
     | AttemptTicketing t ->
         Some
           (fun (k : (a, _) continuation) ->
-            with_effects ~send (fun _ -> Roads.attempt_ticket t);
+            with_effects ~env ~send (fun _ -> Roads.attempt_ticket t);
             continue k ())
     | IssueTicket t ->
         Some
           (fun (k : (a, _) continuation) ->
-            let dispatch_flow =
-              Hashtbl.find_opt Roads.dispatchers_by_road_id t.road
-              |> Copt.get_or_fail
-                   ("dispatcher for road missing: " ^ string_of_int t.road)
+            let wait _ =
+              traceln "waiting for dispatcher";
+              let clock = Eio.Stdenv.clock env in
+              Time.sleep clock 0.5
             in
-            traceln "sending ticket to ...: %s" (show_ticket t);
+            let dispatch_flow = Roads.get_dispatcher ~wait ~tries:10 t.road in
             Msg.Server.send ~flow:dispatch_flow (Msg.Ticket t);
             continue k ())
     | _ -> None
   in
   match_with fn ()
     {
-      retc =
-        ( Cfun.tap @@ fun _ ->
-          traceln "retc";
-          if root then traceln "terminating" );
+      retc = (Cfun.tap @@ fun _ -> () (* traceln "retc" *));
       exnc =
         (fun e ->
           traceln "exnc: %a" Fmt.exn e;
@@ -341,6 +375,7 @@ let rec with_effects ?(root = false) ~send fn =
 
 let handle_socket ~sw ~env flow _ =
   let id = get_id () in
+  let socklog m = traceln "[%i] %s" id m in
   let open Msg.Server in
   let read = Eio.Buf_read.of_flow flow ~initial_size:100 ~max_size:1_000_000 in
   let send = Msg.Server.send ~flow in
@@ -348,24 +383,24 @@ let handle_socket ~sw ~env flow _ =
   let i = ref 0 in
   let rec process_msgs _ =
     incr i;
-    traceln "reading msg %i" !i;
     try
       let msg = parse read in
-      traceln "msg %s" (Msg.show_client_msg msg);
+      socklog @@ Fmt.str "{%i} %s" !i (Msg.show_client_msg msg);
       (match msg with
       | IAmCamera t -> Roads.add_camera t id
       | IAmDispatcher t -> Roads.add_dispatcher t flow id
       | Plate t -> Roads.add_plate t id
-      | WantHeartbeat t -> install_heartbeat ~hb ~sw ~env ~send t);
+      | WantHeartbeat t -> install_heartbeat ~hb ~sw ~env ~send socklog t);
       process_msgs ()
-    with End_of_file ->
-      traceln "eof at %i" !i;
-      ()
+    with End_of_file -> ()
   in
-  with_effects ~send ~root:true process_msgs;
-  traceln "pending heartbeat";
-  Promise.await_exn (Option.get !hb);
-  traceln "handle_socket exit"
+  with_effects ~env ~send ~root:true process_msgs
+(* socklog "pending heartbeat"; *)
+(* Promise.await_exn (Option.get !hb); *)
+(* try Promise.await_exn (Option.get !hb) *)
+(* with e -> *)
+(* socklog @@ Fmt.str "%a" Fmt.exn_backtrace (e, Printexc.get_raw_backtrace ()); *)
+(* socklog "socket closing" *)
 
 let listen ~env ~port =
   let handle_socket_in_isolated_switch a b =
