@@ -1,7 +1,16 @@
 (executable
  (public_name servers)
  (name servers)
- (libraries eio eio_main speed primetime means budgetchat unusual_db mob))
+ (libraries
+  eio
+  eio_main
+  speed
+  primetime
+  means
+  budgetchat
+  unusual_db
+  mob
+  lrcp_app))
 
 (rule
  (alias run)

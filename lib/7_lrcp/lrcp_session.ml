@@ -28,7 +28,7 @@ module SessionManager = struct
     | Close
 
   type manager = {
-    clients_by_id : active_client IntMap.t;
+    mutable clients_by_id : active_client IntMap.t;
     clock : Time.clock;
     on_event : session_event -> unit;
     sw : Switch.t;
@@ -62,14 +62,16 @@ module SessionManager = struct
               ac.max_msg_len <- Int.max (String.length data) ac.max_msg_len
           | _ -> ()
         in
-        ac.client.reply (Out.of_t m))
+        let msg_str = Out.of_t m in
+        traceln "< %s" msg_str;
+        ac.client.reply msg_str)
 
   (* outbound *)
   let ack ?(pos = 0) id t = send id (`Ack (id, pos)) t
 
   let close id t =
-    remove_client id t;
     send id (`Close id) t;
+    remove_client id t;
     ()
 
   let send_data_after ~after ac t =
@@ -97,7 +99,7 @@ module SessionManager = struct
   (* inbound *)
   let add (client : Client.t) t =
     match is_active_client client.id t with
-    | true -> ()
+    | true -> traceln "[sm] c%i already active" client.id
     | false ->
         monitor_inactivity client.id t;
         let next_clients =
@@ -112,13 +114,16 @@ module SessionManager = struct
             }
             !t.clients_by_id
         in
-        t := { !t with clients_by_id = next_clients }
+        traceln "[sm] adding client c%i" client.id;
+        !t.clients_by_id <- next_clients
 
   let incr_watermark ac data = ac.watermark <- ac.watermark + String.length data
 
   let on_data active_client pos data t =
-    if active_client.watermark + 1 = pos then (
+    (* traceln "watermark (pre): %i, pos: %i" active_client.watermark pos; *)
+    if active_client.watermark = pos then (
       incr_watermark active_client data;
+      (* traceln "watermark (post): %i, pos: %i" active_client.watermark pos; *)
       ack ~pos:active_client.watermark active_client.client.id t;
       let evt = Data { session_id = active_client.client.id; data } in
       !t.on_event evt)
@@ -139,6 +144,7 @@ module SessionManager = struct
     | _ -> send_data_after ~after:len ac t
 
   let handle_msg ~msg:raw_msg ~addr ~reply (t : t) =
+    traceln "> %s" raw_msg;
     let with_ac id f =
       match get_active_client_opt id t with
       | Some ac -> f ac

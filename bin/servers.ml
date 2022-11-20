@@ -21,7 +21,10 @@ let () = Printexc.record_backtrace true
    Mob.listen ~env ~port:9999 ~upstream:("chat.protohackers.com", 16963) *)
 
 (* 6. speed *)
-let main _ = Eio_main.run @@ fun env -> Speed.listen ~env ~port:9999
+(* let main _ = Eio_main.run @@ fun env -> Speed.listen ~env ~port:9999 *)
+
+(* 7. lrcp_app *)
+let main _ = Eio_main.run @@ fun env -> Lrcp_app.listen ~env ~port:10000 ()
 
 (* main *)
 let _ = main ()

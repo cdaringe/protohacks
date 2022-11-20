@@ -31,8 +31,7 @@ let listen ?(swo = None) ~env ~port ~fn () =
   let go ~sw = listen_ ~sw ~env ~port ~fn in
   match swo with None -> Switch.run @@ fun sw -> go ~sw | Some sw -> go ~sw
 
-let listen_udp_ ~sw ~env ~port ~fn =
-  let net = Eio.Stdenv.net env in
+let listen_udp_ ~sw ~net ~env:_ ~port ~fn =
   let addr = `Udp (Ipaddr.V4.any, port) in
   let socket = datagram_socket ~sw net addr in
   let on_error e =
@@ -52,8 +51,9 @@ let listen_udp_ ~sw ~env ~port ~fn =
     with e -> on_error e
   done
 
-let listen_udp ?(swo = None) ~env ~port ~fn () =
-  let go ~sw = listen_udp_ ~sw ~env ~port ~fn in
+let listen_udp ?(swo = None) ?(net = None) ~env ~port ~fn () =
+  let net = match net with Some n -> n | None -> Eio.Stdenv.net env in
+  let go ~sw = listen_udp_ ~net ~sw ~env ~port ~fn in
   match swo with None -> Switch.run @@ fun sw -> go ~sw | Some sw -> go ~sw
 
 let nl = '\n'

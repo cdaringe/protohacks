@@ -25,7 +25,7 @@ module In = struct
     match parts with
     | [ "connect"; sess ] -> `Connect (int_gt_0 sess)
     | "data" :: _ ->
-        Scanf.sscanf str "/%d/%d/%s/" (fun session pos data ->
+        Scanf.sscanf str "/data/%u/%u/%s@/" (fun session pos data ->
             `Data (session, pos, data |> unescape))
     | [ "ack"; sess; len ] -> `Ack (int_gt_0 sess, safe_int_of_string len)
     | [ "close"; sess ] -> `Close (int_gt_0 sess)
