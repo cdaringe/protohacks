@@ -1,0 +1,16 @@
+(library
+ (name lrcp)
+ (libraries containers server eio ppx_deriving)
+ (modules lrcp)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))
+
+(library
+ (name lrcp_app)
+ (modules lrcp_app)
+ (libraries eio lrcp lrcp_session server))
+
+(library
+ (name lrcp_session)
+ (modules lrcp_session)
+ (libraries eio lrcp))

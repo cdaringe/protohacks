@@ -1,0 +1,3 @@
+(executable
+ (name lrcp_test)
+ (libraries alcotest ctest eio eio.mock eio_main lrcp))

@@ -1,0 +1,26 @@
+open Lrcp
+(* open Eio *)
+
+let make_client preload_msgs =
+  let flow = Eio_mock.Flow.make "mock-client" in
+  let buf = Eio.Buf_read.of_flow flow ~initial_size:100 ~max_size:1_000_000 in
+  Eio_mock.Flow.on_read flow preload_msgs;
+  (flow, buf)
+
+let etest f _ = Eio_main.run (fun _env -> f ())
+
+let serde_cases_inputs =
+  [ "/data/123/0/hello/"; "/connect/123/"; "/ack/123/145/"; "/close/123/" ]
+
+let serde_case input_output _ =
+  let _flow, buf = make_client [ `Return input_output ] in
+  Alcotest.(check string) "" (In.parse buf |> Out.of_t) input_output
+
+let serde_cases =
+  List.map
+    (fun input ->
+      let case_name = "ser[de] case: " ^ input in
+      (case_name, etest (serde_case input)))
+    serde_cases_inputs
+
+let () = Ctest.run serde_cases

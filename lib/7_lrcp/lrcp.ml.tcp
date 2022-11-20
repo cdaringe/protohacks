@@ -1,0 +1,59 @@
+(* open Eio *)
+module R = Eio.Buf_read
+
+module In = struct
+  let is_slash = Char.equal '/'
+  let is_not_slash c = is_slash c |> not
+
+  module Read = struct
+    open R
+
+    let slash r = char '/' r
+
+    let slashguts r =
+      slash r;
+      take_while is_not_slash r
+
+    let slashguts_n n r = List.init n (fun _ -> slashguts r)
+  end
+
+  let parse r =
+    let open Read in
+    let verify_int_x_then_y x y =
+      if x < 2147483648 then y else failwith "invalid int"
+    in
+    let m =
+      match slashguts r with
+      | "connect" -> `Connect (slashguts r)
+      | "data" ->
+          `Data
+            (slashguts_n 3 r |> function
+             | [ s; p; v ] ->
+                 let int_p = int_of_string p in
+                 verify_int_x_then_y int_p (s, int_p, v)
+             | _ -> failwith "invalid msg")
+      | "ack" ->
+          `Ack
+            (slashguts_n 2 r |> function
+             | [ s; len ] ->
+                 let int_len = int_of_string len in
+                 verify_int_x_then_y int_len (s, int_len)
+             | _ -> failwith "invalid msg")
+      | "close" -> `Close (slashguts r)
+      | _ -> failwith "invalid msg"
+    in
+    slash r;
+    m
+end
+
+module Out = struct
+  let of_t t =
+    let parts =
+      match t with
+      | `Connect s -> [ "connect"; s ]
+      | `Close s -> [ "close"; s ]
+      | `Ack (s, l) -> [ "ack"; s; string_of_int l ]
+      | `Data (s, p, d) -> [ "data"; s; string_of_int p; d ]
+    in
+    "/" ^ String.concat "/" parts ^ "/"
+end

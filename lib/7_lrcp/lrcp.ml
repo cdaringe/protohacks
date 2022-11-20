@@ -1,0 +1,46 @@
+type lrcp_data_msg = [ `Data of int * int * string ]
+type string_list = string list [@@deriving show]
+
+let unescape_fslash = CCString.replace ~sub:"//" ~by:"/"
+let unescape_bslash = CCString.replace ~sub:"\\\\" ~by:"\\"
+let unescape s = s |> unescape_bslash |> unescape_fslash
+let escape_fslash = CCString.replace ~sub:"/" ~by:"//"
+let escape_bslash = CCString.replace ~sub:"\\" ~by:"\\\\"
+let escape s = s |> escape_bslash |> escape_fslash
+
+module In = struct
+  let is_empty_str = String.equal ""
+  let is_non_empty_str s = is_empty_str s |> not
+
+  let int_gt_0 x =
+    let i = int_of_string x in
+    if i > 0 then i else failwith "invalid gt_0 int"
+
+  let safe_int_of_string x =
+    let i = int_of_string x in
+    if i > 0 && i < 2147483648 then i else failwith "invalid <2.4b int"
+
+  let parse str =
+    let parts = String.split_on_char '/' str |> List.filter is_non_empty_str in
+    match parts with
+    | [ "connect"; sess ] -> `Connect (int_gt_0 sess)
+    | "data" :: _ ->
+        Scanf.sscanf str "/%d/%d/%s/" (fun session pos data ->
+            `Data (session, pos, data |> unescape))
+    | [ "ack"; sess; len ] -> `Ack (int_gt_0 sess, safe_int_of_string len)
+    | [ "close"; sess ] -> `Close (int_gt_0 sess)
+    | _ -> failwith "invalid msg"
+end
+
+module Out = struct
+  let of_t t =
+    let parts =
+      match t with
+      | `Connect s -> [ "connect"; string_of_int s ]
+      | `Close s -> [ "close"; string_of_int s ]
+      | `Ack (s, l) -> [ "ack"; string_of_int s; string_of_int l ]
+      | `Data (s, p, d) ->
+          [ "data"; string_of_int s; string_of_int p; d |> escape ]
+    in
+    "/" ^ String.concat "/" parts ^ "/"
+end
