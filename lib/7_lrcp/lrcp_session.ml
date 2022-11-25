@@ -18,6 +18,7 @@ module SessionManager = struct
   type active_client = {
     mutable max_in_ack_len : int;
     mutable last_data_ack : float;
+    mutable last_data_ts : float;
     mutable in_watermark : int;
     mutable out_watermark : int;
     mutable history : data_tuple list;
@@ -127,11 +128,11 @@ module SessionManager = struct
   let close_with_client ({ id; addr; reply; _ } : Client.t) t =
     close ~id ~addr ~reply t
 
-  let send_data_after ~after ac t =
-    let is_msg_after (_, pos, _) = pos > after in
+  let send_data_from ~aftereq ac t =
+    let is_msg_aftereq (_, pos, _) = pos >= aftereq in
     let resend raw_msg = send ac.client.id (Data raw_msg) t in
     let as_ascending = List.rev in
-    List.filter is_msg_after ac.history |> as_ascending |> List.iter resend
+    List.filter is_msg_aftereq ac.history |> as_ascending |> List.iter resend
 
   (* internal *)
 
@@ -150,49 +151,51 @@ module SessionManager = struct
     in
     Fiber.fork_daemon ~sw:!t.sw fn
 
+  let rec consume_queue ac t =
+    match (ac.outbound_queue, ac.is_closing) with
+    | _, true -> `Stop_daemon
+    | [], _ ->
+        Eio.Time.sleep !t.clock 0.01;
+        consume_queue ac t
+    | data :: datas, _ ->
+        let payload = (ac.client.id, ac.out_watermark, data) in
+        incr_out_watermark ac data;
+        let msg = Lrcp.Data payload in
+        (* if we're sending data, update our pending ack state *)
+        ac.history <- payload :: ac.history;
+        ac.pending_ack <- Some payload;
+        ac.outbound_queue <- datas;
+        send ac.client.id msg t;
+        consume_queue ac t
+
   (* inbound *)
   let add (client : Client.t) t =
     match is_active_client client.id t with
     | true -> traceln "[sm] c%i already active" client.id
     | false ->
         monitor_inactivity client.id t;
-        let next_clients =
-          IntMap.add client.id
-            {
-              client;
-              last_data_ack = Time.now !t.clock;
-              max_in_ack_len = 0;
-              in_watermark = 0;
-              out_watermark = 0;
-              history = [];
-              is_closing = false;
-              outbound_queue = [];
-              pending_ack = None;
-            }
-            !t.clients_by_id
+        let ac =
+          {
+            client;
+            last_data_ts = 0.;
+            last_data_ack = Time.now !t.clock;
+            max_in_ack_len = 0;
+            in_watermark = 0;
+            out_watermark = 0;
+            history = [];
+            is_closing = false;
+            outbound_queue = [];
+            pending_ack = None;
+          }
         in
+        let next_clients = IntMap.add client.id ac !t.clients_by_id in
+        Fiber.fork_daemon ~sw:!t.sw (fun _ -> consume_queue ac t);
         !t.clients_by_id <- next_clients
 
   let incr_in_watermark ac data =
     ac.in_watermark <- ac.in_watermark + String.length data
 
-  let try_consume_queue ac t =
-    match ac.pending_ack with
-    | Some _ -> ()
-    | None -> (
-        match ac.outbound_queue with
-        | [] -> ()
-        | data :: datas ->
-            let payload = (ac.client.id, ac.out_watermark, data) in
-            incr_out_watermark ac data;
-            let msg = Lrcp.Data payload in
-            (* if we're sending data, update our pending ack state *)
-            ac.history <- payload :: ac.history;
-            ac.pending_ack <- Some payload;
-            ac.outbound_queue <- datas;
-            send ac.client.id msg t)
-
-  let enqueue_data_string ac data t =
+  let enqueue_data_string ac data =
     let append_q x =
       ac.outbound_queue <- List.concat [ ac.outbound_queue; [ x ] ]
     in
@@ -203,20 +206,34 @@ module SessionManager = struct
           append_q x;
           aux y
     in
-    aux data;
-    try_consume_queue ac t
+    aux data
 
   module In = struct
     let on_data active_client pos data t =
+      active_client.last_data_ts <- Time.now !t.clock;
+      let id = active_client.client.id in
       (* traceln "in_watermark (pre): %i, pos: %i" active_client.in_watermark pos; *)
+      (* case: watermark and next packet aligned, receive next packet *)
       if active_client.in_watermark = pos then (
         (* expected new data. grow the good data watermark and process *)
         incr_in_watermark active_client data;
-        (* traceln "in_watermark (post): %i, pos: %i" active_client.in_watermark pos; *)
-        ack ~pos:active_client.in_watermark active_client.client.id t;
+        traceln "[c%i] on_data, aligned, next waterwark %i" id
+          active_client.in_watermark;
+        ack ~pos:active_client.in_watermark id t;
         let evt = Data { active_client; data } in
-        !t.on_event evt)
-      else ack ~pos:active_client.in_watermark active_client.client.id t
+        !t.on_event evt
+        (* case watermark is behind data. ignore data, request new data *))
+      else
+        (* client probably dropped our last ACK. re-send the ACK it iff we have genuniely fizzled out on receiving data messages *)
+        Fiber.fork ~sw:!t.sw (fun _ ->
+            let prev_data_ts = active_client.last_data_ts in
+            Eio.Time.sleep !t.clock 1.;
+            if prev_data_ts = active_client.last_data_ts then (
+              traceln
+                "[c%i] (in_wm: %i, last_data@%f, current_data@%f) reacking" id
+                active_client.in_watermark prev_data_ts
+                active_client.last_data_ts;
+              ack ~pos:active_client.in_watermark id t))
 
     let on_connect id addr reply t =
       let client = create_client ~id ~addr ~reply in
@@ -235,15 +252,18 @@ module SessionManager = struct
         traceln "[c%i] misbehavin len %i > out_watermark %i" id len
           ac.out_watermark;
         close_with_client active_client.client t)
-      else if len < ac.out_watermark then (
-        traceln "[c%i] (acked@%i, watermark@%i) retransmitting" id len
-          ac.out_watermark;
-        send_data_after ~after:len ac t)
-      else (
+      else if len < ac.out_watermark then
+        (* allot a cooldown period before retransmitting. allow latent acks to cancel *)
+        Fiber.fork ~sw:!t.sw (fun _ ->
+            let prev_ack = active_client.last_data_ack in
+            Eio.Time.sleep !t.clock 2.;
+            if prev_ack = active_client.last_data_ack then (
+              traceln "[c%i] (acked@%i, watermark@%i) retransmitting" id len
+                ac.out_watermark;
+              send_data_from ~aftereq:len ac t))
+      else
         (* we got ack'd, unblock the queue! *)
-        ac.pending_ack <- None;
-        traceln "[c%i] good ack" id;
-        try_consume_queue ac t)
+        ac.pending_ack <- None (* traceln "[c%i] good ack" id; *)
 
     let create_handler ~msg:raw_msg ~addr ~reply (t : t) =
       traceln "> %s" (escape_newlines raw_msg);

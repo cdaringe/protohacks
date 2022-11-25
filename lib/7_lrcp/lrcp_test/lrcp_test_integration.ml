@@ -44,6 +44,7 @@ let session_test_x actions =
     | x :: xs ->
         (* traceln "[test] processing client msg"; *)
         f x;
+        Eio.Time.sleep clock 0.05;
         process_client_msg f xs
   in
   let f msg = handler ~msg ~addr:client_addr ~reply in

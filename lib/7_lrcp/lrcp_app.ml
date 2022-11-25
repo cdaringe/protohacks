@@ -3,8 +3,7 @@ open Lrcp_session
 module IntMap = CCMap.Make (Int)
 module S = SessionManager
 
-let send_reverse_lines ~dbc ~session_manager ~(active_client : S.active_client)
-    data =
+let send_reverse_lines ~dbc ~(active_client : S.active_client) data =
   let id = active_client.client.id in
   let state = IntMap.get_or id !dbc ~default:"" ^ data in
   let final_chunk =
@@ -17,7 +16,7 @@ let send_reverse_lines ~dbc ~session_manager ~(active_client : S.active_client)
      (if final_chunk = `Store then "STORE" else "SEND"); *)
   let emit line_to_rev =
     let msg = CCString.rev line_to_rev ^ "\n" in
-    S.enqueue_data_string active_client msg session_manager
+    S.enqueue_data_string active_client msg
   in
   let update_db v = dbc := IntMap.add id v !dbc in
   let rec process = function
@@ -42,8 +41,7 @@ let create_lrcp_handler ~clock ~sw =
   let on_event = function
     | S.Open -> ()
     | S.Data { active_client; data } ->
-        send_reverse_lines ~dbc ~session_manager:(Option.get !smo)
-          ~active_client data
+        send_reverse_lines ~dbc ~active_client data
     | S.Close -> ()
   in
   let sessionm = S.init ~on_event ~sw ~clock in
