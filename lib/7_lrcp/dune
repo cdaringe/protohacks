@@ -8,7 +8,7 @@
 (library
  (name lrcp_app)
  (modules lrcp_app)
- (libraries eio lrcp lrcp_session server))
+ (libraries containers eio lrcp lrcp_session server))
 
 (library
  (name lrcp_session)

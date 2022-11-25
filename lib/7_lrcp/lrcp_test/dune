@@ -1,3 +1,9 @@
 (executable
  (name lrcp_test)
+ (modules lrcp_test)
+ (libraries alcotest ctest eio eio.mock eio_main lrcp lrcp_app lrcp_session))
+
+(executable
+ (name lrcp_test_integration)
+ (modules lrcp_test_integration)
  (libraries alcotest ctest eio eio.mock eio_main lrcp lrcp_app lrcp_session))

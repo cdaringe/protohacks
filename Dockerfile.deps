@@ -6,7 +6,6 @@ USER root
 RUN apk update
 RUN apk add pkgconfig linux-headers gmp gmp-dev curl
 USER opam
-RUN opam update
 RUN opam switch create --debug 5.0.0~beta1
 
 FROM switch
