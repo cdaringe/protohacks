@@ -43,9 +43,6 @@ module SessionManager = struct
   let init ~on_event ~clock ~sw =
     ref { sw; clock; clients_by_id = IntMap.empty; on_event }
 
-  let incr_out_watermark ac data =
-    ac.out_watermark <- ac.out_watermark + String.length data
-
   let get_active_client_opt id t = IntMap.find_opt id !t.clients_by_id
 
   let get_active_client_then id t fn =
@@ -142,11 +139,11 @@ module SessionManager = struct
         Eio.Time.sleep !t.clock 0.01;
         drain_queue ac t
     | data :: datas, _ ->
+        ac.outbound_queue <- datas;
+        ac.out_watermark <- ac.out_watermark + String.length data;
         let payload = (ac.client.id, ac.out_watermark, data) in
-        incr_out_watermark ac data;
         let msg = Lrcp.Data payload in
         ac.history <- payload :: ac.history;
-        ac.outbound_queue <- datas;
         send ac.client.id msg t;
         drain_queue ac t
 
@@ -171,9 +168,6 @@ module SessionManager = struct
         Fiber.fork_daemon ~sw:!t.sw (fun _ -> drain_queue ac t);
         !t.clients_by_id <- next_clients
 
-  let incr_in_watermark ac data =
-    ac.in_watermark <- ac.in_watermark + String.length data
-
   let enqueue_data_string ac data =
     let append_q x =
       ac.outbound_queue <- List.concat [ ac.outbound_queue; [ x ] ]
@@ -189,20 +183,20 @@ module SessionManager = struct
 
   module In = struct
     let on_data active_client pos data t =
-      active_client.last_data_ts <- Time.now !t.clock;
-      let id = active_client.client.id in
-      if active_client.in_watermark = pos then (
-        incr_in_watermark active_client data;
-        ack ~pos:active_client.in_watermark id t;
+      let ac = active_client in
+      ac.last_data_ts <- Time.now !t.clock;
+      let id = ac.client.id in
+      if ac.in_watermark = pos then (
+        ac.in_watermark <- ac.in_watermark + String.length data;
+        ack ~pos:ac.in_watermark id t;
         let evt = Data { active_client; data } in
         !t.on_event evt)
       else
         (* client probably dropped our last ACK. re-send the ACK it iff we have genuniely fizzled out on receiving data messages *)
         Fiber.fork ~sw:!t.sw (fun _ ->
-            let prev = active_client.last_data_ts in
+            let prev = ac.last_data_ts in
             Eio.Time.sleep !t.clock 1.;
-            if prev = active_client.last_data_ts then
-              ack ~pos:active_client.in_watermark id t)
+            if prev = ac.last_data_ts then ack ~pos:ac.in_watermark id t)
 
     let on_connect id addr reply t =
       add (create_client ~id ~addr ~reply) t;
