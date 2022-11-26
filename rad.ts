@@ -2,8 +2,7 @@ import type { Task, Tasks } from "https://deno.land/x/rad/src/mod.ts";
 
 const buildDevcontainer: Task =
   [
-    `docker buildx build --progress=plain --platform linux/amd64 -t cdaringe/protohacks-deps -f ./Dockerfile.deps .`,
-    `docker buildx build --progress=plain --platform linux/amd64 -t cdaringe/protohacks .`
+    `docker buildx build --progress=plain --platform linux/amd64 -t cdaringe/protohacks .`,
   ].join(" && ");
 const build: Task = `dune build`;
 

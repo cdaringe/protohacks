@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   protohacks:
-    image: cdaringe/ocaml5-devcontainer
+    image: cdaringe/protohacks
     network_mode: host
     command: ls -al && dune exec ./bin/servers.exe
     # command: dune exec ./bin/servers.exe

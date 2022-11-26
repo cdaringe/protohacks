@@ -2,7 +2,7 @@
 // https://containers.dev/implementors/json_reference/
 {
   "name": "ocaml-dev-container",
-  "image": "cdaringe/ocaml5-devcontainer",
+  "image": "cdaringe/protohacks",
   "postCreateCommand": "bash ./scripts/setup.sh",
   "appPort": ["8888:8888/udp", 9999, 10000],
   "runArgs": [
