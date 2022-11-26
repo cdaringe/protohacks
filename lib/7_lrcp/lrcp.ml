@@ -8,26 +8,20 @@ type t =
   | Data of data_tuple
 
 let unslash s =
-  let chars = String.to_seq s |> List.of_seq in
-  (* valid: \/ *)
-  (* valid: \\ *)
-  let rec aux ~is_escaping l =
+  let rec aux is_escaping l =
     match l with
     | [] -> []
     | c :: xs -> (
         match c with
         | '/' ->
-            if is_escaping then c :: aux xs ~is_escaping:false
+            if is_escaping then c :: aux false xs
             else failwith "expected escape for '/' char"
-        | '\\' ->
-            if is_escaping then c :: aux xs ~is_escaping:false
-            else aux xs ~is_escaping:true
+        | '\\' -> if is_escaping then c :: aux false xs else aux true xs
         | x ->
             if is_escaping then failwith "invalid escape for char"
-            else x :: aux ~is_escaping:false xs)
+            else x :: aux false xs)
   in
-  aux ~is_escaping:(String.starts_with ~prefix:"\\" s) chars
-  |> List.to_seq |> String.of_seq
+  Cstr.to_of_chars (aux (String.starts_with ~prefix:"\\" s)) s
 
 let unescape_fslash = CCString.replace ~sub:"\\/" ~by:"/"
 let unescape_bslash = CCString.replace ~sub:"\\\\" ~by:"\\"
@@ -71,9 +65,7 @@ module In = struct
               in
               match CCString.chop_suffix ~suf:"/" payload with
               | None -> failwith "bad data datagram"
-              | Some data ->
-                  (* Eio.traceln "scanf:%s%!" data; *)
-                  Data (id, pos, data |> unescape))
+              | Some data -> Data (id, pos, data |> unescape))
       | [ "ack"; sess; len ] -> Ack (int_gt_0 sess, safe_int_of_string len)
       | [ "close"; sess ] -> Close (int_gt_0 sess)
       | _ -> raise (Parse_msg "invalid datagram: keyword not detected")
