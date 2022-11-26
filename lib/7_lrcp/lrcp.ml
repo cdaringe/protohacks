@@ -7,7 +7,7 @@ type t =
   | Ack of (int * int)
   | Data of data_tuple
 
-let unslash s =
+let unescape s =
   let rec aux is_escaping l =
     match l with
     | [] -> []
@@ -22,11 +22,6 @@ let unslash s =
             else x :: aux false xs)
   in
   Cstr.to_of_chars (aux (String.starts_with ~prefix:"\\" s)) s
-
-let unescape_fslash = CCString.replace ~sub:"\\/" ~by:"/"
-let unescape_bslash = CCString.replace ~sub:"\\\\" ~by:"\\"
-let unescape s = unslash s
-(* s |> unescape_bslash |> unescape_fslash *)
 
 let escape_fslash = CCString.replace ~sub:{x|/|x} ~by:{x|\/|x}
 let escape_bslash = CCString.replace ~sub:{x|\|x} ~by:{x|\\|x}
