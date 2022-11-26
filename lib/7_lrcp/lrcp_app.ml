@@ -3,23 +3,20 @@ open Lrcp_session
 module IntMap = CCMap.Make (Int)
 module S = SessionManager
 
-let send_reverse_lines ~dbc ~(active_client : S.active_client) data =
+let send_reverse ~dbc ~(active_client : S.active_client) data =
   let id = active_client.client.id in
   let state = IntMap.get_or id !dbc ~default:"" ^ data in
   let final_chunk =
     if String.ends_with ~suffix:"\n" state then `Send else `Store
   in
-  let parts =
-    String.split_on_char '\n' state |> List.filter (fun x -> x <> "")
-  in
-  (* traceln "processing (%i lines) (final: %s)" (List.length parts)
-     (if final_chunk = `Store then "STORE" else "SEND"); *)
+  let filter_empty = List.filter (fun x -> x <> "") in
+  let parts = String.split_on_char '\n' state |> filter_empty in
   let emit line_to_rev =
     let msg = CCString.rev line_to_rev ^ "\n" in
     S.enqueue_data_string active_client msg
   in
   let update_db v = dbc := IntMap.add id v !dbc in
-  let rec process = function
+  let rec process_line_parts = function
     | [] -> ()
     | x :: [] -> (
         match final_chunk with
@@ -30,23 +27,18 @@ let send_reverse_lines ~dbc ~(active_client : S.active_client) data =
         | `Store -> update_db x)
     | x :: xs ->
         emit x;
-        process xs
+        process_line_parts xs
   in
-  process parts
+  process_line_parts parts
 
 let create_lrcp_handler ~clock ~sw =
-  (* data by clientid *)
+  (* dbc: data by clientid *)
   let dbc = ref IntMap.empty in
-  let smo = ref None in
   let on_event = function
-    | S.Open -> ()
-    | S.Data { active_client; data } ->
-        send_reverse_lines ~dbc ~active_client data
-    | S.Close -> ()
+    | S.Data { active_client; data } -> send_reverse ~dbc ~active_client data
+    | _ -> ()
   in
-  let sessionm = S.init ~on_event ~sw ~clock in
-  smo := Some sessionm;
-  S.In.create_handler sessionm
+  S.(In.create_handler (init ~on_event ~sw ~clock))
 
 let listen ~env ~port =
   let clock = Eio.Stdenv.clock env in
