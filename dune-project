@@ -18,7 +18,7 @@
 (package
  (name protohacks)
  (allow_empty)
- (synopsis "protohackers in OCaml")
+ (synopsis "Protohackers in OCaml.")
  (description
   "TCP protocol implementations using OCaml 5.x with effects + eio")
  (depends

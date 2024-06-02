@@ -10,6 +10,6 @@
   },
   "ocaml.sandbox": {
     "kind": "opam",
-    "switch": "5.0"
+    "switch": "5.1"
   }
 }

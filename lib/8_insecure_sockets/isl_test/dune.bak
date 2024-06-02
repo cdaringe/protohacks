@@ -1,0 +1,9 @@
+(executable
+ (name isl_test)
+ (modules isl_test)
+ (libraries alcotest ctest eio eio.mock eio_main lrcp lrcp_app lrcp_session))
+
+(executable
+ (name isl_test_integration)
+ (modules isl_test_integration)
+ (libraries alcotest ctest eio eio.mock eio_main lrcp lrcp_app lrcp_session))

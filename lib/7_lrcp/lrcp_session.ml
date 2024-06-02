@@ -33,7 +33,7 @@ module SessionManager = struct
 
   type manager = {
     mutable clients_by_id : active_client IntMap.t;
-    clock : Time.clock;
+    clock: (float Time.clock_ty) Resource.t;
     on_event : session_event -> unit;
     sw : Switch.t;
   }

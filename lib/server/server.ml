@@ -38,7 +38,7 @@ let listen_udp_ ~sw ~net ~env:_ ~port ~fn =
     let msg = Printexc.to_string e and stack = Printexc.get_backtrace () in
     traceln "error handling connection: %s%s" msg stack
   in
-  let reply client_addr msg = send socket client_addr (Cstruct.of_string msg) in
+  let reply client_addr msg = send socket ~dst:client_addr ([Cstruct.of_string msg]) in
   traceln "server listening on %i" port;
   while true do
     let buf = Cstruct.create 1000 in
